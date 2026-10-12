@@ -1,4 +1,4 @@
-import type { AppConfig } from "./types/index.ts";
+import type { AppConfig, EnterpriseRole } from "./types/index.ts";
 
 /**
  * Loads and validates configuration from environment variables.
@@ -12,6 +12,19 @@ export function loadConfig(): AppConfig {
   const autoProvision = (process.env.JIT_AUTO_PROVISION || "true").toLowerCase() === "true";
   const defaultPreference = process.env.JIT_DEFAULT_PREFERENCE || "{}";
   const logLevel = process.env.JIT_LOG_LEVEL || "info";
+
+  // Enterprise Role Defaults
+  const rawRole = (process.env.JIT_DEFAULT_ROLE || "member").toLowerCase();
+  const validRoles: EnterpriseRole[] = [
+    "super_admin",
+    "tenant_admin",
+    "power_user",
+    "member",
+    "guest",
+  ];
+  const defaultRole: EnterpriseRole = validRoles.includes(rawRole as EnterpriseRole)
+    ? (rawRole as EnterpriseRole)
+    : "member";
 
   // CISO RBAC & Guardrail Controls
   const allowedGroups = process.env.ALLOWED_GROUPS
@@ -36,6 +49,7 @@ export function loadConfig(): AppConfig {
     trustedHeader,
     autoProvision,
     defaultPreference,
+    defaultRole,
     logLevel,
     allowedGroups,
     allowedTenants,

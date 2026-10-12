@@ -1,9 +1,11 @@
+import type { EnterpriseRole } from "./types/index.ts";
 import { loadConfig } from "./config.ts";
 import { Logger } from "./utils/logger.ts";
 import { SqliteClient } from "./db/sqlite.ts";
 import { UserProvisioner } from "./services/user-provisioner.ts";
 import { BlocklistService } from "./services/blocklist.ts";
 import { SecurityAuditLogger } from "./services/audit-logger.ts";
+import { HierarchicalRbacEngine } from "./services/rbac-engine.ts";
 import { ForwardAuthMediator } from "./services/forward-auth.ts";
 
 const config = loadConfig();
@@ -14,6 +16,7 @@ logger.info("Initializing Llumen Enterprise JIT Provisioner & Security Gateway",
   sqlitePath: config.sqlitePath,
   authGateway: config.authGatewayUrl,
   autoProvision: config.autoProvision,
+  defaultRole: config.defaultRole,
   allowedGroups: config.allowedGroups,
   killswitchEnabled: config.killswitchEnabled,
 });
@@ -23,7 +26,15 @@ const db = new SqliteClient(config.sqlitePath, logger);
 const provisioner = new UserProvisioner(db, config, logger);
 const blocklist = new BlocklistService(db, logger);
 const auditLogger = new SecurityAuditLogger();
-const authMediator = new ForwardAuthMediator(provisioner, blocklist, auditLogger, config, logger);
+const rbacEngine = new HierarchicalRbacEngine(config.defaultRole);
+const authMediator = new ForwardAuthMediator(
+  provisioner,
+  blocklist,
+  auditLogger,
+  rbacEngine,
+  config,
+  logger
+);
 
 let authSuccessCount = 0;
 let authFailureCount = 0;
@@ -142,6 +153,25 @@ const server = Bun.serve({
       } catch (err) {
         return Response.json({ error: String(err) }, { status: 500 });
       }
+    }
+
+    // Enterprise RBAC Inspection
+    if (url.pathname === "/api/admin/roles" && req.method === "GET") {
+      const roles: EnterpriseRole[] = [
+        "super_admin",
+        "tenant_admin",
+        "power_user",
+        "member",
+        "guest",
+      ];
+      return Response.json({
+        roles: roles.map((r) => ({
+          role: r,
+          level: rbacEngine.getRoleLevel(r),
+          allowedTiers: rbacEngine.listAllowedModelTiers(r),
+        })),
+        defaultRole: config.defaultRole,
+      });
     }
 
     // ForwardAuth verification endpoint (called by Traefik / Ingress)

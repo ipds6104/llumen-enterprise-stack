@@ -3,6 +3,7 @@ import { SqliteClient } from "../src/db/sqlite.ts";
 import { UserProvisioner } from "../src/services/user-provisioner.ts";
 import { BlocklistService } from "../src/services/blocklist.ts";
 import { SecurityAuditLogger } from "../src/services/audit-logger.ts";
+import { HierarchicalRbacEngine } from "../src/services/rbac-engine.ts";
 import { ForwardAuthMediator } from "../src/services/forward-auth.ts";
 import { Logger } from "../src/utils/logger.ts";
 import type { AppConfig } from "../src/types/index.ts";
@@ -15,6 +16,7 @@ describe("ForwardAuthMediator (EIP Message Translator & CISO Controls)", () => {
   let provisioner: UserProvisioner;
   let blocklist: BlocklistService;
   let auditLogger: SecurityAuditLogger;
+  let rbacEngine: HierarchicalRbacEngine;
   let mediator: ForwardAuthMediator;
   const logger = new Logger("error");
 
@@ -25,6 +27,7 @@ describe("ForwardAuthMediator (EIP Message Translator & CISO Controls)", () => {
     trustedHeader: "X-Forwarded-User",
     autoProvision: true,
     defaultPreference: "{}",
+    defaultRole: "member",
     logLevel: "error",
     allowedGroups: [],
     allowedTenants: [],
@@ -37,7 +40,15 @@ describe("ForwardAuthMediator (EIP Message Translator & CISO Controls)", () => {
     provisioner = new UserProvisioner(db, mockConfig, logger);
     blocklist = new BlocklistService(db, logger);
     auditLogger = new SecurityAuditLogger();
-    mediator = new ForwardAuthMediator(provisioner, blocklist, auditLogger, mockConfig, logger);
+    rbacEngine = new HierarchicalRbacEngine(mockConfig.defaultRole);
+    mediator = new ForwardAuthMediator(
+      provisioner,
+      blocklist,
+      auditLogger,
+      rbacEngine,
+      mockConfig,
+      logger
+    );
   });
 
   afterEach(() => {
@@ -45,10 +56,11 @@ describe("ForwardAuthMediator (EIP Message Translator & CISO Controls)", () => {
     if (existsSync(TEST_DB)) unlinkSync(TEST_DB);
   });
 
-  it("authenticates and enriches request with X-Auth-Request-User header", async () => {
+  it("authenticates and enriches request with X-Auth-Request-User and RBAC headers", async () => {
     const headers = new Headers();
     headers.set("x-auth-request-user", "199503112022031001");
     headers.set("x-auth-request-email", "pegawai@bps.go.id");
+    headers.set("x-auth-request-groups", "pegawai");
 
     const result = await mediator.verifyAndEnrich(headers);
 
@@ -57,6 +69,9 @@ describe("ForwardAuthMediator (EIP Message Translator & CISO Controls)", () => {
     expect(result.headers["X-Forwarded-User"]).toBe("199503112022031001");
     expect(result.headers["X-Forwarded-Email"]).toBe("pegawai@bps.go.id");
     expect(result.headers["X-User-Provisioned"]).toBe("true");
+    expect(result.headers["X-Forwarded-Role"]).toBe("member");
+    expect(result.headers["X-User-Role-Level"]).toBe("2");
+    expect(result.headers["X-Forwarded-Tier"]).toContain("tier_standard");
 
     const userInDb = await provisioner.getUser("199503112022031001");
     expect(userInDb).not.toBeNull();
@@ -87,7 +102,14 @@ describe("ForwardAuthMediator (EIP Message Translator & CISO Controls)", () => {
 
   it("enforces RBAC group constraints (allowedGroups)", async () => {
     const rbacConfig: AppConfig = { ...mockConfig, allowedGroups: ["6104", "super_admin"] };
-    const rbacMediator = new ForwardAuthMediator(provisioner, blocklist, auditLogger, rbacConfig, logger);
+    const rbacMediator = new ForwardAuthMediator(
+      provisioner,
+      blocklist,
+      auditLogger,
+      rbacEngine,
+      rbacConfig,
+      logger
+    );
 
     // 1. User with unauthorized group -> 403
     const badHeaders = new Headers();
@@ -109,9 +131,41 @@ describe("ForwardAuthMediator (EIP Message Translator & CISO Controls)", () => {
     expect(goodResult.status).toBe(200);
   });
 
+  it("denies access when member tries to execute reasoning model without clearance", async () => {
+    const headers = new Headers();
+    headers.set("x-auth-request-user", "standard_employee");
+    headers.set("x-auth-request-groups", "member");
+    headers.set("x-requested-model", "deepseek-r1");
+
+    const result = await mediator.verifyAndEnrich(headers);
+    expect(result.authenticated).toBe(false);
+    expect(result.status).toBe(403);
+    expect(result.error).toContain("lacks clearance for model 'deepseek-r1'");
+  });
+
+  it("permits access when power_user/developer executes reasoning model", async () => {
+    const headers = new Headers();
+    headers.set("x-auth-request-user", "ai_developer");
+    headers.set("x-auth-request-groups", "developer"); // alias of power_user
+    headers.set("x-requested-model", "deepseek-r1");
+
+    const result = await mediator.verifyAndEnrich(headers);
+    expect(result.authenticated).toBe(true);
+    expect(result.status).toBe(200);
+    expect(result.headers["X-Forwarded-Role"]).toBe("power_user");
+    expect(result.headers["X-User-Role-Level"]).toBe("3");
+  });
+
   it("triggers emergency killswitch with 503 Service Unavailable", async () => {
     const killswitchConfig: AppConfig = { ...mockConfig, killswitchEnabled: true };
-    const ksMediator = new ForwardAuthMediator(provisioner, blocklist, auditLogger, killswitchConfig, logger);
+    const ksMediator = new ForwardAuthMediator(
+      provisioner,
+      blocklist,
+      auditLogger,
+      rbacEngine,
+      killswitchConfig,
+      logger
+    );
 
     const headers = new Headers();
     headers.set("x-auth-request-user", "199503112022031001");

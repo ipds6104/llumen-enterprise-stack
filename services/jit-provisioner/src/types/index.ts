@@ -16,12 +16,45 @@ export interface ProvisionResult {
   isNew: boolean;
 }
 
+export type EnterpriseRole =
+  | "super_admin"
+  | "tenant_admin"
+  | "power_user"
+  | "member"
+  | "guest";
+
+export type ModelTier =
+  | "tier_basic"
+  | "tier_standard"
+  | "tier_advanced"
+  | "tier_reasoning";
+
+export interface UserRoleClaim {
+  userId: string;
+  tenantId?: string;
+  department?: string;
+  roles: string[];
+  attributes?: Record<string, unknown>;
+}
+
+export interface IHierarchicalRbacEngine {
+  resolveEffectiveRole(claims: UserRoleClaim | string[]): EnterpriseRole;
+  getRoleLevel(role: EnterpriseRole): number;
+  isAtLeast(userRole: EnterpriseRole, requiredRole: EnterpriseRole): boolean;
+  isPermitted(role: EnterpriseRole, action: string, resource?: string): boolean;
+  getModelTier(modelName: string): ModelTier;
+  filterModelClearance(role: EnterpriseRole, requestedModel: string): boolean;
+  listAllowedModelTiers(role: EnterpriseRole): ModelTier[];
+}
+
 export interface AuthClaims {
   username: string;
   email?: string;
   displayName?: string;
   groups?: string[];
   tenant?: string;
+  role?: EnterpriseRole;
+  tier?: ModelTier;
 }
 
 export interface AuthVerificationResult {
@@ -50,6 +83,7 @@ export type AuditEventType =
   | "AUTH_SUCCESS"
   | "AUTH_FAILED"
   | "AUTH_FORBIDDEN_GROUP"
+  | "AUTH_FORBIDDEN_MODEL"
   | "USER_PROVISIONED"
   | "USER_DEACTIVATED"
   | "USER_BLOCKED"
@@ -85,6 +119,7 @@ export interface AppConfig {
   trustedHeader: string;
   autoProvision: boolean;
   defaultPreference: string;
+  defaultRole: EnterpriseRole;
   logLevel: string;
   allowedGroups: string[];
   allowedTenants: string[];

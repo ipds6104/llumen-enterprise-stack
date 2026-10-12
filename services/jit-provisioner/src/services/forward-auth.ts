@@ -2,6 +2,7 @@ import type {
   IAuthMediator,
   IUserProvisioner,
   IBlocklistService,
+  IHierarchicalRbacEngine,
   AuthVerificationResult,
   AppConfig,
 } from "../types/index.ts";
@@ -16,6 +17,7 @@ export class ForwardAuthMediator implements IAuthMediator {
   private provisioner: IUserProvisioner;
   private blocklist: IBlocklistService;
   private auditLogger: SecurityAuditLogger;
+  private rbacEngine: IHierarchicalRbacEngine;
   private config: AppConfig;
   private logger: Logger;
 
@@ -23,12 +25,14 @@ export class ForwardAuthMediator implements IAuthMediator {
     provisioner: IUserProvisioner,
     blocklist: IBlocklistService,
     auditLogger: SecurityAuditLogger,
+    rbacEngine: IHierarchicalRbacEngine,
     config: AppConfig,
     logger: Logger
   ) {
     this.provisioner = provisioner;
     this.blocklist = blocklist;
     this.auditLogger = auditLogger;
+    this.rbacEngine = rbacEngine;
     this.config = config;
     this.logger = logger;
   }
@@ -214,6 +218,33 @@ export class ForwardAuthMediator implements IAuthMediator {
       }
     }
 
+    // CISO Control 5: Hierarchical RBAC Resolution & Model Clearance
+    const effectiveRole = this.rbacEngine.resolveEffectiveRole(groups);
+    const requestedModel =
+      requestHeaders.get("x-requested-model") ||
+      requestHeaders.get("x-target-model");
+
+    if (requestedModel) {
+      const isCleared = this.rbacEngine.filterModelClearance(effectiveRole, requestedModel);
+      if (!isCleared) {
+        const requiredTier = this.rbacEngine.getModelTier(requestedModel);
+        this.auditLogger.logEvent(
+          "AUTH_FORBIDDEN_MODEL",
+          "WARN",
+          username,
+          { role: effectiveRole, requestedModel, requiredTier },
+          clientIp,
+          userAgent
+        );
+        return {
+          authenticated: false,
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+          error: `Forbidden: Role '${effectiveRole}' lacks clearance for model '${requestedModel}' (${requiredTier})`,
+        };
+      }
+    }
+
     // Step 4: Ensure User exists in Llumen SQLite (JIT Provisioning)
     try {
       const provisionResult = await this.provisioner.ensureUser(username);
@@ -233,7 +264,7 @@ export class ForwardAuthMediator implements IAuthMediator {
         "AUTH_SUCCESS",
         "INFO",
         username,
-        { userId: provisionResult.user.id, email, groups },
+        { userId: provisionResult.user.id, email, groups, role: effectiveRole },
         clientIp,
         userAgent
       );
@@ -242,6 +273,9 @@ export class ForwardAuthMediator implements IAuthMediator {
         [this.config.trustedHeader]: provisionResult.user.name,
         "X-User-Provisioned": provisionResult.isNew ? "true" : "false",
         "X-Llumen-User-Id": String(provisionResult.user.id),
+        "X-Forwarded-Role": effectiveRole,
+        "X-Forwarded-Tier": this.rbacEngine.listAllowedModelTiers(effectiveRole).join(","),
+        "X-User-Role-Level": String(this.rbacEngine.getRoleLevel(effectiveRole)),
       };
 
       if (email) responseHeaders["X-Forwarded-Email"] = email;
@@ -255,6 +289,8 @@ export class ForwardAuthMediator implements IAuthMediator {
           email: email || undefined,
           groups,
           tenant: tenant || undefined,
+          role: effectiveRole,
+          tier: requestedModel ? this.rbacEngine.getModelTier(requestedModel) : undefined,
         },
         headers: responseHeaders,
       };

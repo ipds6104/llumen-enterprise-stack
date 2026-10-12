@@ -19,6 +19,7 @@ describe("UserProvisioner (EIP Content Enricher & SCIM)", () => {
     trustedHeader: "X-Forwarded-User",
     autoProvision: true,
     defaultPreference: "{}",
+    defaultRole: "member",
     logLevel: "error",
     allowedGroups: [],
     allowedTenants: [],

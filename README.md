@@ -73,6 +73,23 @@ Stack ini dilengkapi perkakas operasi darurat untuk tim SOC / Keamanan:
 
 ---
 
+## 👑 Universal Hierarchical RBAC & Model Clearance Tiers
+
+Stack ini mengimplementasikan otorisasi berjenjang universal (`IHierarchicalRbacEngine`) yang memetakan peran pengguna secara deterministik dan mengendalikan akses ke model LLM:
+
+| Tingkat | Peran Universal | Cakupan & Wewenang | Klirens Model AI Yang Diizinkan | Contoh Alias IdP / SAML |
+| :---: | :--- | :--- | :--- | :--- |
+| **Level 5** | `super_admin` | Global platform control, CISO controls, killswitch, audit SIEM | Seluruh model (*tier_basic*, *tier_standard*, *tier_advanced*, *tier_reasoning*) | `admin`, `ciso`, `root`, `system_admin`, `security_officer` |
+| **Level 4** | `tenant_admin` | Admin departemen / divisi / unit kerja, manajemen kuota | *tier_basic*, *tier_standard*, *tier_advanced*, *tier_reasoning* | `dept_admin`, `satker_admin`, `division_head`, `manager`, `org_admin` |
+| **Level 3** | `power_user` | Developer, data analyst, operator AI dengan kuota tinggi | *tier_basic*, *tier_standard*, *tier_advanced*, *tier_reasoning* (e.g. `deepseek-r1`, `o1`) | `operator`, `lead`, `developer`, `engineer`, `analyst`, `ppk` |
+| **Level 2** | `member` | Karyawan/staf reguler perusahaan | *tier_basic*, *tier_standard* (e.g. `gpt-4o`, `gemini-1.5-pro`) | `pegawai`, `staff`, `employee`, `user`, `internal`, `asn` |
+| **Level 1** | `guest` | Pengguna eksternal, kontraktor sementara, auditor | *tier_basic* saja (e.g. `gpt-4o-mini`, `gemini-1.5-flash`, `kimi-k3`) | `guest`, `viewer`, `external`, `contractor`, `auditor`, `intern` |
+
+> [!NOTE]
+> **Prevalensi Multi-Role Deterministik**: Jika pengguna memiliki beberapa peran pada token SSO (misal: `pegawai` dan `developer`), mesin RBAC secara otomatis menetapkan peran dengan level hierarki tertinggi (`power_user`).
+
+---
+
 ## 🚀 Panduan Memulai Cepat (Quickstart)
 
 ### 1. Inisialisasi Environment & Secrets
