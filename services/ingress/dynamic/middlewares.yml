@@ -1,0 +1,60 @@
+# ==============================================================================
+# Traefik Dynamic Middlewares (Enterprise Security & EIP Pipelines)
+# ==============================================================================
+
+http:
+  middlewares:
+    # 1. Defense-in-depth: Strict HTTP Security Headers
+    enterprise-security-headers:
+      headers:
+        sslRedirect: true
+        stsSeconds: 63072000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
+        customResponseHeaders:
+          X-Robots-Tag: "noindex, nofollow"
+          Server: "Enterprise-Gateway"
+
+    # 2. Anti-Spoofing: Strip untrusted inbound identity headers
+    strip-inbound-spoofing:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-User: ""
+          Remote-User: ""
+          X-Auth-Request-User: ""
+          X-Auth-Request-Email: ""
+          X-Auth-Request-Preferred-Username: ""
+
+    # 3. Rate Limiting: Prevent volumetric abuse
+    enterprise-rate-limit:
+      rateLimit:
+        average: 120
+        burst: 60
+        period: 1m
+
+    # 4. EIP ForwardAuth Chain (Traefik -> JIT Provisioner -> OAuth2-Proxy)
+    llumen-forward-auth:
+      forwardAuth:
+        address: "http://jit-provisioner:3001/auth"
+        trustForwardHeader: true
+        authResponseHeaders:
+          - "X-Forwarded-User"
+          - "X-Forwarded-Email"
+          - "X-User-Provisioned"
+          - "X-Llumen-User-Id"
+
+    # 5. Fallback Direct OAuth2-Proxy Middleware
+    oauth2-proxy-auth:
+      forwardAuth:
+        address: "http://auth-gateway:4180/oauth2/auth"
+        trustForwardHeader: true
+        authResponseHeaders:
+          - "X-Auth-Request-User"
+          - "X-Auth-Request-Email"
+          - "X-Auth-Request-Preferred-Username"

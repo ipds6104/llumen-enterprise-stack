@@ -1,0 +1,144 @@
+# ==============================================================================
+# LLUMEN ENTERPRISE STACK - CORE PRODUCTION SPECIFICATION
+# Architecture: Zero-Trust Ingress + OIDC/SAML Auth Gateway + EIP JIT Provisioner
+# ==============================================================================
+
+services:
+  # 1. Edge Reverse Proxy & TLS Ingress (Traefik)
+  reverse-proxy:
+    image: traefik:v3.2
+    container_name: llumen-ingress
+    restart: unless-stopped
+    ports:
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_HTTPS_PORT:-443}:443"
+    environment:
+      - TRAEFIK_ACME_EMAIL=${TRAEFIK_ACME_EMAIL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./services/ingress/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./services/ingress/dynamic:/etc/traefik/dynamic:ro
+      - ./services/ingress/certs:/etc/traefik/certs:rw
+    networks:
+      - public
+      - internal
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+  # 2. Enterprise SSO Gateway (OAuth2-Proxy)
+  auth-gateway:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+    container_name: llumen-auth-gateway
+    restart: unless-stopped
+    environment:
+      - OIDC_ISSUER_URL=${OIDC_ISSUER_URL}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      - OIDC_USER_CLAIM=${OIDC_USER_CLAIM:-nip}
+      - COOKIE_SECRET=${COOKIE_SECRET}
+      - VALKEY_PASSWORD=${VALKEY_PASSWORD}
+    volumes:
+      - ./services/auth-gateway/oauth2-proxy.cfg.example:/etc/oauth2-proxy.cfg:ro
+    command: ["--config=/etc/oauth2-proxy.cfg"]
+    depends_on:
+      valkey:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:4180/ping || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+  # 3. EIP JIT Provisioner & Identity Mediator (Bun Microservice)
+  jit-provisioner:
+    build:
+      context: ./services/jit-provisioner
+      dockerfile: Dockerfile
+    image: llumen-jit-provisioner:latest
+    container_name: llumen-jit-provisioner
+    restart: unless-stopped
+    environment:
+      - JIT_PORT=3001
+      - JIT_SQLITE_PATH=/data/db.sqlite
+      - JIT_AUTH_GATEWAY_URL=http://auth-gateway:4180
+      - LLUMEN_TRUSTED_HEADER=${LLUMEN_TRUSTED_HEADER:-X-Forwarded-User}
+      - JIT_AUTO_PROVISION=${JIT_AUTO_PROVISION:-true}
+      - JIT_LOG_LEVEL=${JIT_LOG_LEVEL:-info}
+    volumes:
+      - llumen-data:/data:rw
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+  # 4. Core Llumen Engine (pinkfuwa/llumen)
+  llumen:
+    image: ${LLUMEN_IMAGE:-ghcr.io/pinkfuwa/llumen:latest}
+    container_name: llumen-core
+    restart: unless-stopped
+    environment:
+      - API_KEY=${OPENROUTER_API_KEY}
+      - API_BASE=${LLM_API_BASE:-https://openrouter.ai/api}
+      - DATA_PATH=/data
+      - BIND_ADDR=0.0.0.0:80
+      - TRUSTED_HEADER=${LLUMEN_TRUSTED_HEADER:-X-Forwarded-User}
+      - LOGOUT_URL=${LOGOUT_REDIRECT_URL}
+      - RUST_LOG=info
+    volumes:
+      - llumen-data:/data:rw
+    depends_on:
+      jit-provisioner:
+        condition: service_healthy
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+
+  # 5. Distributed Cache & Session Store (Valkey)
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    container_name: llumen-valkey
+    restart: unless-stopped
+    command: ["valkey-server", "--requirepass", "${VALKEY_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - valkey-data:/data:rw
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "valkey-cli", "-a", "${VALKEY_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  llumen-data:
+    driver: local
+  valkey-data:
+    driver: local
+
+networks:
+  public:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true

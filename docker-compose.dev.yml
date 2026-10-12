@@ -1,0 +1,22 @@
+# ==============================================================================
+# LLUMEN ENTERPRISE STACK - LOCAL DEVELOPMENT OVERLAY
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# ==============================================================================
+
+services:
+  # Expose internal ports directly for local developer inspection & debugging
+  jit-provisioner:
+    ports:
+      - "3001:3001"
+    environment:
+      - JIT_LOG_LEVEL=debug
+
+  llumen:
+    ports:
+      - "8001:80"
+    environment:
+      - RUST_LOG=debug
+
+  valkey:
+    ports:
+      - "6379:6379"

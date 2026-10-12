@@ -1,0 +1,34 @@
+# ==============================================================================
+# LLUMEN ENTERPRISE STACK - SAML 2.0 FEDERATION OVERLAY
+# Usage: docker compose -f docker-compose.yml -f docker-compose.saml.yml up -d
+# ==============================================================================
+
+services:
+  # CNCF Dex: Enterprise SAML 2.0 to OIDC Identity Broker
+  saml-broker:
+    image: dexidp/dex:v2.41.1
+    container_name: llumen-saml-broker
+    restart: unless-stopped
+    environment:
+      - DEX_ISSUER=http://saml-broker:5556/dex
+    volumes:
+      - ./services/auth-gateway/dex-saml.yml.example:/etc/dex/config.docker.yaml:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:5556/dex/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+  # Point OAuth2-Proxy to local SAML Broker
+  auth-gateway:
+    environment:
+      - OIDC_ISSUER_URL=http://saml-broker:5556/dex
+      - OIDC_CLIENT_ID=llumen-saml-client
+      - OIDC_CLIENT_SECRET=llumen-saml-secret
+    depends_on:
+      saml-broker:
+        condition: service_healthy

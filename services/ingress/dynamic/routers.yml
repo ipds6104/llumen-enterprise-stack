@@ -1,0 +1,47 @@
+# ==============================================================================
+# Traefik Dynamic Routers & Services Mapping
+# ==============================================================================
+
+http:
+  routers:
+    # 1. OAuth2-Proxy SSO Auth Callback & Login Router (Unauthenticated)
+    auth-gateway-router:
+      rule: "PathPrefix(`/oauth2`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - enterprise-security-headers
+        - enterprise-rate-limit
+      service: service-auth-gateway
+      tls:
+        certResolver: letsencrypt
+
+    # 2. Main Llumen AI Chat Interface Router (Protected by SSO & JIT ForwardAuth)
+    llumen-router:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - enterprise-security-headers
+        - strip-inbound-spoofing
+        - enterprise-rate-limit
+        - llumen-forward-auth
+      service: service-llumen
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    service-llumen:
+      loadBalancer:
+        servers:
+          - url: "http://llumen:80"
+
+    service-auth-gateway:
+      loadBalancer:
+        servers:
+          - url: "http://auth-gateway:4180"
+
+    service-jit-provisioner:
+      loadBalancer:
+        servers:
+          - url: "http://jit-provisioner:3001"

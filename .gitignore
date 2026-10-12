@@ -1,0 +1,33 @@
+# Environment and secrets
+.env
+*.env.local
+*.secret
+*.pem
+*.key
+*.crt
+
+# Data directories and persistence
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.redb
+
+# Node / Bun
+node_modules/
+bun.lockb
+bun.lock
+
+# Logs
+*.log
+logs/
+
+# Traefik acme
+services/ingress/certs/acme.json
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

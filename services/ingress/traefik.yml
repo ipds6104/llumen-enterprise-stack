@@ -1,0 +1,60 @@
+# ==============================================================================
+# Traefik Static Configuration (Edge Ingress & Zero-Trust Gateway)
+# ==============================================================================
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: false
+
+log:
+  level: INFO
+  format: json
+
+accessLog:
+  format: json
+  bufferingSize: 100
+  fields:
+    names:
+      StartUTC: keep
+      Duration: keep
+      ClientHost: keep
+      RequestMethod: keep
+      RequestPath: keep
+      ResponseStatusCode: keep
+    headers:
+      names:
+        User-Agent: keep
+        X-Forwarded-User: keep
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "${TRAEFIK_ACME_EMAIL}"
+      storage: /etc/traefik/certs/acme.json
+      httpChallenge:
+        entryPoint: web

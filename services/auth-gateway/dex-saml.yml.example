@@ -1,0 +1,36 @@
+# ==============================================================================
+# Dex SAML 2.0 to OIDC Identity Broker Configuration Template
+# ==============================================================================
+
+issuer: http://saml-broker:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+telemetry:
+  http: 0.0.0.0:5558
+
+# Upstream SAML 2.0 Identity Provider (e.g. rIDM, Okta, ADFS)
+connectors:
+  - type: saml
+    id: enterprise-saml
+    name: Enterprise SAML SSO
+    config:
+      ssoURL: https://auth.dvlpid.my.id/t/bps/saml/sso
+      caData: "" # Base64 PEM certificate of the SAML IdP
+      redirectURI: http://llumen.dvlpid.my.id/dex/callback
+      entityIssuer: https://llumen.dvlpid.my.id/saml/metadata
+      usernameAttr: name
+      emailAttr: email
+      groupsAttr: groups
+
+# Relying Party OAuth2 Clients
+staticClients:
+  - id: llumen-saml-client
+    redirectURIs:
+      - 'http://llumen.dvlpid.my.id/oauth2/callback'
+    name: 'Llumen SAML SP'
+    secret: llumen-saml-secret
