@@ -46,3 +46,15 @@
 ## 5. Zero-Mock di Jalur Produksi & Security Hardening
 - Dilarang menaruh mock atau stubs dummy di jalur runtime produksi.
 - Seluruh container wajib mematuhi standar CIS hardening (`read_only: true`, `cap_drop: ["ALL"]`, `no-new-privileges: true`).
+
+---
+
+## 6. Enterprise Roadmap Tracking (docs/roadmap/)
+Setiap penambahan atau pengembangan fitur wajib mengikuti dan memperbarui status checklist di [docs/roadmap/00_ROADMAP_OVERVIEW.md](docs/roadmap/00_ROADMAP_OVERVIEW.md):
+- [Phase 1: Identity & Hierarchical RBAC](docs/roadmap/01_PHASE_1_IDENTITY_FEDERATION_AND_RBAC.md)
+- [Phase 2: High Availability & Litestream S3](docs/roadmap/02_PHASE_2_HIGH_AVAILABILITY_AND_REPLICATION.md)
+- [Phase 3: Advanced DLP & Prompt Guardrails](docs/roadmap/03_PHASE_3_ADVANCED_DLP_AND_PROMPT_GUARDRAILS.md)
+- [Phase 4: FinOps, Token Budgeting & Telemetry](docs/roadmap/04_PHASE_4_FINOPS_TOKEN_BUDGETING_AND_METRICS.md)
+- [Phase 5: Enterprise Document RAG & Knowledge Vault](docs/roadmap/05_PHASE_5_ENTERPRISE_RAG_AND_KNOWLEDGE_VAULT.md)
+- [Phase 6: Multi-Model Routing & Local vLLM Fallback](docs/roadmap/06_PHASE_6_MODEL_FAILOVER_AND_PRIVATE_VLLM.md)
+- [Phase 7: Centralized SIEM & Compliance Gauntlet](docs/roadmap/07_PHASE_7_SIEM_AUDIT_LOGGING_AND_COMPLIANCE.md)

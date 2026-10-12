@@ -96,8 +96,16 @@ make saml
 
 ---
 
-## 📚 Dokumentasi Terperinci
+## 📚 Dokumentasi Terperinci & Roadmap
 
+- [🗺️ **Peta Jalan Strategis Enterprise (Roadmap 7 Fase)**](docs/roadmap/00_ROADMAP_OVERVIEW.md)
+  - [Phase 1: Identity & Hierarchical RBAC](docs/roadmap/01_PHASE_1_IDENTITY_FEDERATION_AND_RBAC.md)
+  - [Phase 2: High Availability & Litestream S3](docs/roadmap/02_PHASE_2_HIGH_AVAILABILITY_AND_REPLICATION.md)
+  - [Phase 3: Advanced DLP & Prompt Guardrails](docs/roadmap/03_PHASE_3_ADVANCED_DLP_AND_PROMPT_GUARDRAILS.md)
+  - [Phase 4: FinOps & Token Budgeting](docs/roadmap/04_PHASE_4_FINOPS_TOKEN_BUDGETING_AND_METRICS.md)
+  - [Phase 5: Enterprise Document Knowledge RAG](docs/roadmap/05_PHASE_5_ENTERPRISE_RAG_AND_KNOWLEDGE_VAULT.md)
+  - [Phase 6: Multi-Model Routing & Local vLLM Fallback](docs/roadmap/06_PHASE_6_MODEL_FAILOVER_AND_PRIVATE_VLLM.md)
+  - [Phase 7: Centralized SIEM & Compliance Gauntlet](docs/roadmap/07_PHASE_7_SIEM_AUDIT_LOGGING_AND_COMPLIANCE.md)
 - [🛡️ CISO Security Whitepaper & Compliance Matrix](docs/CISO_SECURITY_WHITEPAPER.md)
 - [🔒 Data Loss Prevention (DLP) & AI Egress Control](docs/DLP_AND_EGRESS_CONTROL.md)
 - [📘 Panduan Integrasi SSO (rIDM, Keycloak, Azure AD, SAML)](docs/SSO_INTEGRATION_GUIDE.md)
