@@ -1,0 +1,47 @@
+# ==============================================================================
+# LLUMEN ENTERPRISE STACK - AI GATEWAY & DLP EGRESS OVERLAY
+# Usage: docker compose -f docker-compose.yml -f docker-compose.gateway.yml up -d
+# ==============================================================================
+
+services:
+  # Enterprise AI Egress Gateway & DLP Guardrail
+  # Intercepts all inference calls, applies model whitelisting, and tracks token quotas
+  ai-gateway:
+    image: ghcr.io/berriai/litellm:main-v1.61.16
+    container_name: llumen-ai-gateway
+    restart: unless-stopped
+    read_only: true
+    environment:
+      - PORT=4000
+      - LITELLM_MASTER_KEY=${AI_GATEWAY_MASTER_KEY:-sk-enterprise-gateway-key}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    volumes:
+      - ./services/gateway/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:4000/health/liveliness"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # Point Llumen upstream to local AI Gateway rather than direct public internet
+  llumen:
+    environment:
+      - API_BASE=http://ai-gateway:4000
+      - API_KEY=${AI_GATEWAY_MASTER_KEY:-sk-enterprise-gateway-key}
+    depends_on:
+      ai-gateway:
+        condition: service_healthy

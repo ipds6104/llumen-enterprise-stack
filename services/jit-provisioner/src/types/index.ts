@@ -1,6 +1,7 @@
 /**
  * Core type definitions for Llumen JIT Provisioner & Identity Mediator
  * Enterprise Integration Pattern (EIP): Content Enricher & Message Translator
+ * Enterprise CISO Controls: RBAC, SIEM Auditing, Killswitch, SCIM Lifecycle
  */
 
 export interface LlumenUser {
@@ -20,6 +21,7 @@ export interface AuthClaims {
   email?: string;
   displayName?: string;
   groups?: string[];
+  tenant?: string;
 }
 
 export interface AuthVerificationResult {
@@ -30,9 +32,44 @@ export interface AuthVerificationResult {
   error?: string;
 }
 
+export interface BlockedUserEntry {
+  username: string;
+  reason: string;
+  blockedBy: string;
+  blockedAt: string;
+}
+
+export interface IBlocklistService {
+  isBlocked(username: string): boolean;
+  blockUser(username: string, reason: string, admin: string): void;
+  unblockUser(username: string): boolean;
+  listBlocked(): BlockedUserEntry[];
+}
+
+export type AuditEventType =
+  | "AUTH_SUCCESS"
+  | "AUTH_FAILED"
+  | "AUTH_FORBIDDEN_GROUP"
+  | "USER_PROVISIONED"
+  | "USER_DEACTIVATED"
+  | "USER_BLOCKED"
+  | "USER_UNBLOCKED"
+  | "KILLSWITCH_TRIGGERED";
+
+export interface SecurityAuditEvent {
+  timestamp: string;
+  eventType: AuditEventType;
+  severity: "INFO" | "WARN" | "CRITICAL";
+  principal: string;
+  clientIp?: string;
+  userAgent?: string;
+  details: Record<string, unknown>;
+}
+
 export interface IUserProvisioner {
   ensureUser(username: string): Promise<ProvisionResult>;
   getUser(username: string): Promise<LlumenUser | null>;
+  deactivateUser(username: string): Promise<boolean>;
   listUsers(): Promise<LlumenUser[]>;
   close(): void;
 }
@@ -49,4 +86,7 @@ export interface AppConfig {
   autoProvision: boolean;
   defaultPreference: string;
   logLevel: string;
+  allowedGroups: string[];
+  allowedTenants: string[];
+  killswitchEnabled: boolean;
 }

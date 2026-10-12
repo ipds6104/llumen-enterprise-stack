@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { SqliteClient } from "../src/db/sqlite.ts";
 import { UserProvisioner } from "../src/services/user-provisioner.ts";
+import { BlocklistService } from "../src/services/blocklist.ts";
+import { SecurityAuditLogger } from "../src/services/audit-logger.ts";
 import { ForwardAuthMediator } from "../src/services/forward-auth.ts";
 import { Logger } from "../src/utils/logger.ts";
 import type { AppConfig } from "../src/types/index.ts";
@@ -8,9 +10,11 @@ import { unlinkSync, existsSync } from "node:fs";
 
 const TEST_DB = "/tmp/test_forward_auth.sqlite";
 
-describe("ForwardAuthMediator (EIP Message Translator)", () => {
+describe("ForwardAuthMediator (EIP Message Translator & CISO Controls)", () => {
   let db: SqliteClient;
   let provisioner: UserProvisioner;
+  let blocklist: BlocklistService;
+  let auditLogger: SecurityAuditLogger;
   let mediator: ForwardAuthMediator;
   const logger = new Logger("error");
 
@@ -22,13 +26,18 @@ describe("ForwardAuthMediator (EIP Message Translator)", () => {
     autoProvision: true,
     defaultPreference: "{}",
     logLevel: "error",
+    allowedGroups: [],
+    allowedTenants: [],
+    killswitchEnabled: false,
   };
 
   beforeEach(() => {
     if (existsSync(TEST_DB)) unlinkSync(TEST_DB);
     db = new SqliteClient(TEST_DB, logger);
     provisioner = new UserProvisioner(db, mockConfig, logger);
-    mediator = new ForwardAuthMediator(provisioner, mockConfig, logger);
+    blocklist = new BlocklistService(db, logger);
+    auditLogger = new SecurityAuditLogger();
+    mediator = new ForwardAuthMediator(provisioner, blocklist, auditLogger, mockConfig, logger);
   });
 
   afterEach(() => {
@@ -49,7 +58,6 @@ describe("ForwardAuthMediator (EIP Message Translator)", () => {
     expect(result.headers["X-Forwarded-Email"]).toBe("pegawai@bps.go.id");
     expect(result.headers["X-User-Provisioned"]).toBe("true");
 
-    // Verify user actually exists in database
     const userInDb = await provisioner.getUser("199503112022031001");
     expect(userInDb).not.toBeNull();
     expect(userInDb?.name).toBe("199503112022031001");
@@ -62,5 +70,55 @@ describe("ForwardAuthMediator (EIP Message Translator)", () => {
     expect(result.authenticated).toBe(false);
     expect(result.status).toBe(401);
     expect(result.error).toContain("Unauthenticated");
+  });
+
+  it("blocks user revoked in security blocklist with 403 Forbidden", async () => {
+    const revokedUser = "compromised_employee";
+    blocklist.blockUser(revokedUser, "Security incident #1234", "soc_lead");
+
+    const headers = new Headers();
+    headers.set("x-auth-request-user", revokedUser);
+
+    const result = await mediator.verifyAndEnrich(headers);
+    expect(result.authenticated).toBe(false);
+    expect(result.status).toBe(403);
+    expect(result.error).toContain("revoked by Enterprise Security");
+  });
+
+  it("enforces RBAC group constraints (allowedGroups)", async () => {
+    const rbacConfig: AppConfig = { ...mockConfig, allowedGroups: ["6104", "super_admin"] };
+    const rbacMediator = new ForwardAuthMediator(provisioner, blocklist, auditLogger, rbacConfig, logger);
+
+    // 1. User with unauthorized group -> 403
+    const badHeaders = new Headers();
+    badHeaders.set("x-auth-request-user", "user_satker_other");
+    badHeaders.set("x-auth-request-groups", "satker_6101,operator");
+
+    const badResult = await rbacMediator.verifyAndEnrich(badHeaders);
+    expect(badResult.authenticated).toBe(false);
+    expect(badResult.status).toBe(403);
+    expect(badResult.error).toContain("not authorized in required enterprise RBAC group");
+
+    // 2. User with authorized group -> 200
+    const goodHeaders = new Headers();
+    goodHeaders.set("x-auth-request-user", "199503112022031001");
+    goodHeaders.set("x-auth-request-groups", "satker_6104,6104");
+
+    const goodResult = await rbacMediator.verifyAndEnrich(goodHeaders);
+    expect(goodResult.authenticated).toBe(true);
+    expect(goodResult.status).toBe(200);
+  });
+
+  it("triggers emergency killswitch with 503 Service Unavailable", async () => {
+    const killswitchConfig: AppConfig = { ...mockConfig, killswitchEnabled: true };
+    const ksMediator = new ForwardAuthMediator(provisioner, blocklist, auditLogger, killswitchConfig, logger);
+
+    const headers = new Headers();
+    headers.set("x-auth-request-user", "199503112022031001");
+
+    const result = await ksMediator.verifyAndEnrich(headers);
+    expect(result.authenticated).toBe(false);
+    expect(result.status).toBe(503);
+    expect(result.error).toContain("Emergency AI Gateway Killswitch Active");
   });
 });

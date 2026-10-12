@@ -3,13 +3,18 @@ import {
   INIT_USER_TABLE_SQL,
   FIND_USER_BY_NAME_SQL,
   INSERT_USER_SQL,
+  DELETE_USER_SQL,
   LIST_USERS_SQL,
+  INSERT_BLOCKLIST_SQL,
+  FIND_BLOCKLIST_SQL,
+  DELETE_BLOCKLIST_SQL,
+  LIST_BLOCKLIST_SQL,
 } from "./schema.ts";
-import type { LlumenUser } from "../types/index.ts";
+import type { LlumenUser, BlockedUserEntry } from "../types/index.ts";
 import { Logger } from "../utils/logger.ts";
 
 /**
- * Manages SQLite database operations for Llumen data store.
+ * Manages SQLite database operations for Llumen data store and security controls.
  * Adheres to SOLID Single Responsibility Principle.
  */
 export class SqliteClient {
@@ -52,9 +57,39 @@ export class SqliteClient {
     return user;
   }
 
+  deleteUser(name: string): boolean {
+    const deleteQuery = this.db.query(DELETE_USER_SQL);
+    deleteQuery.run(name);
+    return this.findUserByName(name) === null;
+  }
+
   listUsers(): LlumenUser[] {
     const query = this.db.query(LIST_USERS_SQL);
     return query.all() as LlumenUser[];
+  }
+
+  // --- CISO Security Blocklist Operations ---
+
+  isUserBlocked(username: string): boolean {
+    const query = this.db.query(FIND_BLOCKLIST_SQL);
+    const result = query.get(username);
+    return result !== null;
+  }
+
+  blockUser(username: string, reason: string, blockedBy: string): void {
+    const query = this.db.query(INSERT_BLOCKLIST_SQL);
+    query.run(username, reason, blockedBy, new Date().toISOString());
+  }
+
+  unblockUser(username: string): boolean {
+    const query = this.db.query(DELETE_BLOCKLIST_SQL);
+    query.run(username);
+    return !this.isUserBlocked(username);
+  }
+
+  listBlockedUsers(): BlockedUserEntry[] {
+    const query = this.db.query(LIST_BLOCKLIST_SQL);
+    return query.all() as BlockedUserEntry[];
   }
 
   close(): void {

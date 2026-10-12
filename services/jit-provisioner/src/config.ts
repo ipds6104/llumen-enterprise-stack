@@ -13,6 +13,18 @@ export function loadConfig(): AppConfig {
   const defaultPreference = process.env.JIT_DEFAULT_PREFERENCE || "{}";
   const logLevel = process.env.JIT_LOG_LEVEL || "info";
 
+  // CISO RBAC & Guardrail Controls
+  const allowedGroups = process.env.ALLOWED_GROUPS
+    ? process.env.ALLOWED_GROUPS.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  const allowedTenants = process.env.ALLOWED_TENANTS
+    ? process.env.ALLOWED_TENANTS.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  const killswitchEnabled =
+    (process.env.KILLSWITCH_ENABLED || "false").toLowerCase() === "true";
+
   if (isNaN(port) || port <= 0 || port > 65535) {
     throw new Error(`Invalid JIT_PORT configuration: ${process.env.JIT_PORT}`);
   }
@@ -25,5 +37,8 @@ export function loadConfig(): AppConfig {
     autoProvision,
     defaultPreference,
     logLevel,
+    allowedGroups,
+    allowedTenants,
+    killswitchEnabled,
   };
 }

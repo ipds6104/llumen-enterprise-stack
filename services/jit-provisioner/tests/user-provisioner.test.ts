@@ -7,7 +7,7 @@ import { unlinkSync, existsSync } from "node:fs";
 
 const TEST_DB = "/tmp/test_llumen_user.sqlite";
 
-describe("UserProvisioner (EIP Content Enricher)", () => {
+describe("UserProvisioner (EIP Content Enricher & SCIM)", () => {
   let db: SqliteClient;
   let provisioner: UserProvisioner;
   const logger = new Logger("error");
@@ -20,6 +20,9 @@ describe("UserProvisioner (EIP Content Enricher)", () => {
     autoProvision: true,
     defaultPreference: "{}",
     logLevel: "error",
+    allowedGroups: [],
+    allowedTenants: [],
+    killswitchEnabled: false,
   };
 
   beforeEach(() => {
@@ -42,7 +45,6 @@ describe("UserProvisioner (EIP Content Enricher)", () => {
     expect(result.user.id).toBeGreaterThan(0);
     expect(result.user.password).toContain("$argon2id$");
 
-    // Second call should return existing user without re-inserting
     const secondCall = await provisioner.ensureUser(nip);
     expect(secondCall.isNew).toBe(false);
     expect(secondCall.user.id).toBe(result.user.id);
@@ -51,7 +53,6 @@ describe("UserProvisioner (EIP Content Enricher)", () => {
   it("sanitizes username containing whitespace and control characters", async () => {
     const messyUser = "  199812152021021002\r\n ";
     const result = await provisioner.ensureUser(messyUser);
-
     expect(result.user.name).toBe("199812152021021002");
   });
 
@@ -62,7 +63,16 @@ describe("UserProvisioner (EIP Content Enricher)", () => {
   it("rejects provisioning when autoProvision is disabled", async () => {
     const strictConfig = { ...mockConfig, autoProvision: false };
     const strictProvisioner = new UserProvisioner(db, strictConfig, logger);
-
     expect(strictProvisioner.ensureUser("unauthorized_user")).rejects.toThrow("auto-provisioning is disabled");
+  });
+
+  it("deactivates user when requested (SCIM offboarding)", async () => {
+    const nip = "199001012015011001";
+    await provisioner.ensureUser(nip);
+    expect(await provisioner.getUser(nip)).not.toBeNull();
+
+    const deactivated = await provisioner.deactivateUser(nip);
+    expect(deactivated).toBe(true);
+    expect(await provisioner.getUser(nip)).toBeNull();
   });
 });

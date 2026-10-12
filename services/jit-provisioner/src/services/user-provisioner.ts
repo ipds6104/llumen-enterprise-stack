@@ -4,7 +4,7 @@ import { Logger } from "../utils/logger.ts";
 
 /**
  * Enterprise JIT User Provisioner implementation.
- * Implements EIP Content Enricher pattern.
+ * Implements EIP Content Enricher pattern and SCIM user de-provisioning.
  */
 export class UserProvisioner implements IUserProvisioner {
   private db: SqliteClient;
@@ -69,6 +69,12 @@ export class UserProvisioner implements IUserProvisioner {
   async getUser(username: string): Promise<LlumenUser | null> {
     const sanitized = this.sanitizeUsername(username);
     return this.db.findUserByName(sanitized);
+  }
+
+  async deactivateUser(username: string): Promise<boolean> {
+    const sanitized = this.sanitizeUsername(username);
+    this.logger.warn("Deactivating/De-provisioning user from Llumen database", { username: sanitized });
+    return this.db.deleteUser(sanitized);
   }
 
   async listUsers(): Promise<LlumenUser[]> {

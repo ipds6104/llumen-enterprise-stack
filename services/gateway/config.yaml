@@ -1,0 +1,43 @@
+# ==============================================================================
+# Enterprise AI Gateway & DLP Policy Configuration
+# ==============================================================================
+
+model_list:
+  - model_name: "moonshotai/kimi-k3"
+    litellm_params:
+      model: "openrouter/moonshotai/kimi-k3"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+
+  - model_name: "openai/gpt-4o-mini"
+    litellm_params:
+      model: "openrouter/openai/gpt-4o-mini"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+
+  - model_name: "anthropic/claude-3-5-haiku"
+    litellm_params:
+      model: "openrouter/anthropic/claude-3-5-haiku"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+
+router_settings:
+  routing_strategy: "least-busy"
+  timeout: 60
+  num_retries: 2
+
+general_settings:
+  master_key: "os.environ/LITELLM_MASTER_KEY"
+  database_connection_pool_limit: 10
+  disable_spend_logs: false
+
+# Enterprise CISO Guardrails & DLP Patterns (Data Loss Prevention)
+# Scans prompts and masks/blocks PII before sending outbound
+litellm_settings:
+  drop_params: true
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
+  content_policy:
+    enforce_pii_masking: true
+    blocked_patterns:
+      - "(?i)password\\s*[:=]\\s*['\"][^'\"]+['\"]"
+      - "(?i)api[_-]?key\\s*[:=]\\s*['\"][^'\"]+['\"]"
+      - "(?i)BEGIN\\s+(RSA|OPENSSH|EC|PRIVATE)\\s+KEY"
+      - "\\b[1-9][0-9]{15}\\b" # 16-digit credit card / Indonesian NIK regex

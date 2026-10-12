@@ -1,5 +1,5 @@
 # ==============================================================================
-# LLUMEN ENTERPRISE STACK - CORE PRODUCTION SPECIFICATION
+# LLUMEN ENTERPRISE STACK - CORE PRODUCTION SPECIFICATION (CISO HARDENED)
 # Architecture: Zero-Trust Ingress + OIDC/SAML Auth Gateway + EIP JIT Provisioner
 # ==============================================================================
 
@@ -19,6 +19,12 @@ services:
       - ./services/ingress/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./services/ingress/dynamic:/etc/traefik/dynamic:ro
       - ./services/ingress/certs:/etc/traefik/certs:rw
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     networks:
       - public
       - internal
@@ -29,12 +35,18 @@ services:
       retries: 3
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
 
   # 2. Enterprise SSO Gateway (OAuth2-Proxy)
   auth-gateway:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
     container_name: llumen-auth-gateway
     restart: unless-stopped
+    read_only: true
     environment:
       - OIDC_ISSUER_URL=${OIDC_ISSUER_URL}
       - OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
@@ -44,7 +56,11 @@ services:
       - VALKEY_PASSWORD=${VALKEY_PASSWORD}
     volumes:
       - ./services/auth-gateway/oauth2-proxy.cfg.example:/etc/oauth2-proxy.cfg:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
     command: ["--config=/etc/oauth2-proxy.cfg"]
+    cap_drop:
+      - ALL
     depends_on:
       valkey:
         condition: service_healthy
@@ -57,6 +73,11 @@ services:
       retries: 3
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
 
   # 3. EIP JIT Provisioner & Identity Mediator (Bun Microservice)
   jit-provisioner:
@@ -66,6 +87,7 @@ services:
     image: llumen-jit-provisioner:latest
     container_name: llumen-jit-provisioner
     restart: unless-stopped
+    read_only: true
     environment:
       - JIT_PORT=3001
       - JIT_SQLITE_PATH=/data/db.sqlite
@@ -73,8 +95,15 @@ services:
       - LLUMEN_TRUSTED_HEADER=${LLUMEN_TRUSTED_HEADER:-X-Forwarded-User}
       - JIT_AUTO_PROVISION=${JIT_AUTO_PROVISION:-true}
       - JIT_LOG_LEVEL=${JIT_LOG_LEVEL:-info}
+      - ALLOWED_GROUPS=${ALLOWED_GROUPS:-}
+      - ALLOWED_TENANTS=${ALLOWED_TENANTS:-}
+      - KILLSWITCH_ENABLED=${KILLSWITCH_ENABLED:-false}
     volumes:
       - llumen-data:/data:rw
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
     networks:
       - internal
     healthcheck:
@@ -84,6 +113,11 @@ services:
       retries: 3
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
 
   # 4. Core Llumen Engine (pinkfuwa/llumen)
   llumen:
@@ -108,7 +142,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          cpus: "1.0"
+          memory: 256M
     security_opt:
       - no-new-privileges:true
 
@@ -117,9 +152,14 @@ services:
     image: valkey/valkey:8.0-alpine
     container_name: llumen-valkey
     restart: unless-stopped
+    read_only: true
     command: ["valkey-server", "--requirepass", "${VALKEY_PASSWORD}", "--appendonly", "yes"]
     volumes:
       - valkey-data:/data:rw
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    cap_drop:
+      - ALL
     networks:
       - internal
     healthcheck:
@@ -129,6 +169,11 @@ services:
       retries: 3
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
 
 volumes:
   llumen-data:
