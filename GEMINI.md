@@ -1,0 +1,48 @@
+# Context, Engineering Standards & Old-Coder Governance
+
+> [!IMPORTANT]
+> Repository ini diatur secara deterministik oleh **Old-Coder Engineering Protocol** dan prinsip arsitektur enterprise bersih.
+
+---
+
+## 1. Old-Coder Protocol & Evidence-First Development
+- **Skill Lokal**: Terpasang di [.agents/skills/old-coder/SKILL.md](.agents/skills/old-coder/SKILL.md) dan [.agents/skills/old-coder-api/SKILL.md](.agents/skills/old-coder-api/SKILL.md).
+- **Upstream Source**: [https://github.com/amazingang/old-coder](https://github.com/amazingang/old-coder).
+- **Core Loop**:
+  `SPEC → (human approval) → RED → GREEN → REFACTOR → GAUNTLET → EVIDENCE`
+- **Filosofi**: *"Don't read the code — make it run the gauntlet."* Kepercayaan dibangun atas bukti eksekusi gauntlet (*evidence report*), bukan inspeksi baris demi baris secara manual.
+
+---
+
+## 2. Interface-First Design Principle (Kontrak Sebelum Implementasi)
+1. **DILARANG KERAS** menulis implementasi konkret sebelum trait/interface abstraksi didefinisikan dan disepakati.
+2. Interface/trait adalah kontrak spesifikasi; struct/class konkret hanyalah adaptor detail.
+3. Seluruh dependensi wajib disuntikkan via *Dependency Injection* (DIP) untuk menjamin decoupling dan testability.
+
+---
+
+## 3. SOLID Principles Enforcement
+- **Single Responsibility (SRP)**: Setiap file dan modul hanya bertanggung jawab atas satu domain terbatas (ingres, auth gateway, JIT provisioner, audit logging, blocklist).
+- **Open/Closed (OCP)**: Penambahan fitur baru (misal: IdP baru, provider LLM, format audit) dilakukan via komposisi/overlay tanpa memodifikasi core orchestrator.
+- **Liskov Substitution (LSP)**: Seluruh implementasi driver atau mock pengujian dapat saling menggantikan melalui interface tanpa merusak ekspektasi gateway.
+- **Interface Segregation (ISP)**: Kontrak interface dipisah ramping (`IUserProvisioner`, `IBlocklistService`, `IAuthMediator`).
+- **Dependency Inversion (DIP)**: Modul tingkat tinggi bergantung pada abstraksi, bukan detail konkret.
+
+---
+
+## 4. Batas Maksimal 350 Baris per File (Hard Deterministic Limit)
+> [!CAUTION]
+> **TIDAK BOLEH ADA 1 FILE PUN YANG MELEBIHI 350 BARIS KODE** (`wc -l < 350`) di seluruh repositori (termasuk `services/`, `scripts/`, `docs/`, dan `.agents/skills/`).
+
+- **Mekanisme Pengecekan Deterministik**:
+  Wajib menjalankan:
+  ```bash
+  bash scripts/check-line-limits.sh
+  ```
+- Jika ada berkas mendekati 300 baris, segera pecah ke submodule terpisah.
+
+---
+
+## 5. Zero-Mock di Jalur Produksi & Security Hardening
+- Dilarang menaruh mock atau stubs dummy di jalur runtime produksi.
+- Seluruh container wajib mematuhi standar CIS hardening (`read_only: true`, `cap_drop: ["ALL"]`, `no-new-privileges: true`).
